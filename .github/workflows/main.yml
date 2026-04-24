@@ -25,7 +25,7 @@ jobs:
 
     - name: Lint with ruff
       run: |
-        cd backend && ruff check .
+        cd backend && python -m ruff check .
 
     - name: Run tests
       run: |
