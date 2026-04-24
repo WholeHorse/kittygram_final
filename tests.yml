@@ -1,4 +1,4 @@
 repo_owner: WholeHorse
 dockerhub_username: qwazzq
-kittygram_domain: https://kittygram.yourdomain.com  # Обязательно https
-taski_domain: https://taski.yourdomain.com          # Обязательно https
+kittygram_domain: https://kitty.hopto.org
+taski_domain: https://kitty.hopto.org
