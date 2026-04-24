@@ -6,49 +6,90 @@ on:
       - main
 
 jobs:
-  build-and-deploy:
+  tests:
     runs-on: ubuntu-latest
-
     steps:
     - name: Checkout code
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
 
     - name: Set up Python
-      uses: actions/setup-python@v2
+      uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
     - name: Install dependencies
       run: |
+        python -m pip install --upgrade pip
         pip install -r backend/requirements.txt
-        cd frontend && npm ci
 
     - name: Lint with ruff
       run: |
-        cd backend && python -m ruff check .
+        # Запускаем ruff из корня, указывая папку backend
+        python -m ruff check backend/
 
-    - name: Run tests
+    - name: Run backend tests
       run: |
-        cd backend && pytest
-        cd frontend && npm test
+        # Добавляем папку backend в пути поиска модулей, 
+        # чтобы pytest видел manage.py и настройки
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/backend
+        pytest
 
-    - name: Build Docker images
+    - name: Run frontend tests
       run: |
-        docker build -t username/kittygram_backend ./backend
-        docker build -t username/kittygram_frontend ./frontend
-        docker build -t username/kittygram_gateway ./nginx
+        cd frontend
+        npm ci
+        # Добавляем CI=true, чтобы тесты не зависали в интерактивном режиме
+        CI=true npm test
 
-    - name: Push to Docker Hub
-      run: |
-        docker tag username/kittygram_backend ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_backend
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_backend
-        docker tag username/kittygram_frontend ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_frontend
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_frontend
-        docker tag username/kittygram_gateway ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_gateway
-        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_gateway
+  build_and_push_to_docker_hub:
+    name: Push Docker image to Docker Hub
+    runs-on: ubuntu-latest
+    needs: tests # Сборка начнется только если тесты прошли
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker 
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      
+      - name: Push backend to Docker Hub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend/
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_backend:latest
 
-    - name: Send Telegram notification
-      run: |
-        curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
-          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
-          -d "text=Kittygram deployment successful! Check Docker Hub for updated images.""
+      - name: Push frontend to Docker Hub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend/
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_frontend:latest
+
+      - name: Push gateway to Docker Hub
+        uses: docker/build-push-action@v4
+        with:
+          context: ./nginx/
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_gateway:latest
+
+  send_message:
+    runs-on: ubuntu-latest
+    needs: build_and_push_to_docker_hub
+    steps:
+    - name: Send message
+      uses: appleboy/telegram-action@master
+      with:
+        to: ${{ secrets.TELEGRAM_TO }}
+        token: ${{ secrets.TELEGRAM_TOKEN }}
+        message: |
+          Деплой Kittygram успешно выполнен!
+          Автор: ${{ github.actor }}
+          Коммит: ${{ github.event.commits[0].message }}
+          Ссылка: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
