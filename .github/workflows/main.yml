@@ -1,0 +1,54 @@
+name: Kittygram CI/CD
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.9'
+
+    - name: Install dependencies
+      run: |
+        pip install -r backend/requirements.txt
+        cd frontend && npm ci
+
+    - name: Lint with ruff
+      run: |
+        cd backend && ruff check .
+
+    - name: Run tests
+      run: |
+        cd backend && pytest
+        cd frontend && npm test
+
+    - name: Build Docker images
+      run: |
+        docker build -t username/kittygram_backend ./backend
+        docker build -t username/kittygram_frontend ./frontend
+        docker build -t username/kittygram_gateway ./nginx
+
+    - name: Push to Docker Hub
+      run: |
+        docker tag username/kittygram_backend ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_backend
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_backend
+        docker tag username/kittygram_frontend ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_frontend
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_frontend
+        docker tag username/kittygram_gateway ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_gateway
+        docker push ${{ secrets.DOCKERHUB_USERNAME }}/kittygram_gateway
+
+    - name: Send Telegram notification
+      run: |
+        curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT_TOKEN }}/sendMessage" \
+          -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+          -d "text=Kittygram deployment successful! Check Docker Hub for updated images.""
