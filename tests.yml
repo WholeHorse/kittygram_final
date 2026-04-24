@@ -1,4 +1,4 @@
 repo_owner: WholeHorse
 dockerhub_username: qwazzq
-kittygram_domain: http://localhost:9000
-taski_domain: http://localhost:9000
+kittygram_domain: https://kittygram.yourdomain.com  # Обязательно https
+taski_domain: https://taski.yourdomain.com          # Обязательно https
